@@ -12,8 +12,8 @@ name: CI
 
 on:
   push:
-    branches: [main]        # runs only when code is merged to main
-  workflow_dispatch:        # manual "Run workflow" button in GitHub UI
+    branches: [main] # runs only when code is merged to main
+  workflow_dispatch: # manual "Run workflow" button in GitHub UI
 
 # Cancel in-progress runs on the same branch to save runner minutes
 concurrency:
