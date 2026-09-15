@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitHub Actions CI/CD — Architecture Guide</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    /* ── Tokens ────────────────────────────────────────────── */
+    :root {
+      --bg:      #09101f;
+      --surface: #111827;
+      --border:  rgba(99,179,237,.14);
+      --blue:    #63b3ed;
+      --purple:  #b794f4;
+      --green:   #68d391;
+      --red:     #fc8181;
+      --yellow:  #f6e05e;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --code-bg: #060c18;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      line-height: 1.75;
+    }
+
+    .page { max-width: 880px; margin: 0 auto; padding: 56px 24px 96px; }
+
+    h1 {
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-weight: 800;
+      letter-spacing: -.5px;
+      background: linear-gradient(120deg, #e2e8f0 30%, #63b3ed 70%, #b794f4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+    .lead { color: var(--muted); font-size: 1rem; margin-bottom: 48px; }
+
+    h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--blue);
+      margin: 44px 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h3 {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 20px 0 8px;
+    }
+    strong { color: #fff; }
+    p { color: #94a3b8; margin-bottom: 10px; }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+    /* ── Cards ──────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 24px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Grid ───────────────────────────────────────────────── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    /* ── Concept Boxes ───────────────────────────────────────── */
+    .concept {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      font-size: 13.5px;
+    }
+    .concept .label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .concept .label.blue   { color: var(--blue); }
+    .concept .label.purple { color: var(--purple); }
+    .concept p { font-size: 13px; color: var(--muted); margin: 0; }
+
+    /* ── Without vs With ─────────────────────────────────────── */
+    .diff { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 14px; }
+    .diff-header { display: flex; }
+    .diff-col { flex: 1; padding: 16px 20px; font-size: 13.5px; }
+    .diff-col:first-child { background: rgba(252,129,129,.05); border-right: 1px solid var(--border); }
+    .diff-col:last-child  { background: rgba(104,211,145,.05); }
+    .diff-col .diff-title { font-weight: 700; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; margin-bottom: 10px; }
+    .diff-col:first-child .diff-title { color: var(--red); }
+    .diff-col:last-child  .diff-title { color: var(--green); }
+    .diff-col ul { list-style: none; padding: 0; }
+    .diff-col li { color: var(--muted); font-size: 13px; padding: 4px 0; }
+    .diff-col:first-child li::before { content: '✗  '; color: var(--red); }
+    .diff-col:last-child  li::before { content: '✓  '; color: var(--green); }
+
+    /* ── Concepts Table ──────────────────────────────────────── */
+    .concept-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 6px 0; }
+    .concept-table th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      padding: 0 14px 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .concept-table th:first-child { width: 200px; }
+    .concept-table td {
+      padding: 11px 14px 11px 0;
+      border-bottom: 1px solid rgba(99,179,237,.06);
+      color: #94a3b8;
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .concept-table td:first-child {
+      color: var(--blue);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    .concept-table td em {
+      display: block;
+      font-size: 11.5px;
+      font-style: normal;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .concept-table tr:last-child td { border-bottom: none; }
+    .concept-table tr:hover td { background: rgba(99,179,237,.03); }
+
+    /* ── Example pill ────────────────────────────────────────── */
+    .ex {
+      display: inline-block;
+      font-size: 11px;
+      background: rgba(99,179,237,.1);
+      color: var(--blue);
+      font-family: 'JetBrains Mono', monospace;
+      padding: 1px 7px;
+      border-radius: 4px;
+      margin-left: 4px;
+    }
+    .ex.green { background: rgba(104,211,145,.1); color: var(--green); }
+
+    /* ── Step List ───────────────────────────────────────────── */
+    .step-list { display: flex; flex-direction: column; gap: 10px; }
+    .step { display: flex; gap: 14px; align-items: flex-start; }
+    .step-num {
+      flex-shrink: 0;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: rgba(99,179,237,.1);
+      border: 1px solid rgba(99,179,237,.35);
+      color: var(--blue);
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 3px;
+    }
+    .step-body { font-size: 14px; color: #94a3b8; }
+    .step-body strong { color: var(--text); }
+
+    /* ── Code Block ──────────────────────────────────────────── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid rgba(99,179,237,.12);
+      border-left: 3px solid var(--blue);
+      border-radius: 10px;
+      padding: 16px 18px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.75;
+      color: #a8d8f0;
+      margin: 12px 0;
+      tab-size: 2;
+    }
+    .hl-cmt  { color: #4a5568; font-style: italic; }
+    .hl-key  { color: #c792ea; }
+    .hl-str  { color: #c3e88d; }
+    .hl-num  { color: #f78c6c; }
+    code {
+      background: rgba(99,179,237,.1);
+      color: var(--blue);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 2px 7px;
+      border-radius: 5px;
+    }
+
+    /* ── Diagram ─────────────────────────────────────────────── */
+    .diagram {
+      background: #060c18;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin: 14px 0;
+      overflow-x: auto;
+    }
+
+    /* ── Pipeline flow ───────────────────────────────────────── */
+    .pipeline-row {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+    .p-node {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 13px;
+      text-align: center;
+      min-width: 110px;
+    }
+    .p-node .p-icon { font-size: 18px; display: block; margin-bottom: 4px; }
+    .p-node .p-label { font-size: 11.5px; font-weight: 600; color: var(--text); }
+    .p-node .p-sub   { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .p-arrow { color: var(--muted); font-size: 18px; padding: 0 6px; }
+    .p-node.blue   { border-color: rgba(99,179,237,.4); }
+    .p-node.purple { border-color: rgba(183,148,244,.4); }
+    .p-node.green  { border-color: rgba(104,211,145,.4); }
+
+    /* ── kv-table (small utility) ────────────────────────────── */
+    .kv-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 10px 0; }
+    .kv-table th {
+      text-align: left; color: var(--muted);
+      font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+      padding: 0 12px 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .kv-table td {
+      padding: 9px 12px 9px 0;
+      border-bottom: 1px solid rgba(99,179,237,.06);
+      color: #94a3b8; vertical-align: top;
+    }
+    .kv-table td:first-child { color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12.5px; white-space: nowrap; }
+    .kv-table tr:last-child td { border-bottom: none; }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    footer {
+      text-align: center; margin-top: 64px;
+      color: var(--muted); font-size: 12px;
+      border-top: 1px solid var(--border); padding-top: 28px;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Hero ─────────────────────────────────────────────────────────── -->
+  <h1>GitHub Actions CI/CD</h1>
+  <p class="lead">A visual guide to how CI pipelines work — concepts, workflow files, and code, all in one place.</p>
+
+  <!-- ── 1. What is CI/CD ────────────────────────────────────────────── -->
+  <h2>⚡ What is CI/CD?</h2>
+  <div class="grid-2">
+    <div class="concept">
+      <div class="label blue">CI — Continuous Integration</div>
+      <p>Every time you push code, a pipeline automatically <strong>checks for errors, runs tests, and verifies formatting</strong>. Bugs are caught instantly — before anyone else is affected.</p>
+    </div>
+    <div class="concept">
+      <div class="label purple">CD — Continuous Deployment</div>
+      <p>After CI passes, the code is automatically <strong>packaged and sent to a server</strong>. No manual steps, no "I forgot to deploy" moments.</p>
+    </div>
+  </div>
+
+  <!-- ── 2. Without vs With ──────────────────────────────────────────── -->
+  <h2>🛡️ Without CI/CD vs With GitHub Actions</h2>
+  <div class="diff">
+    <div class="diff-header">
+      <div class="diff-col">
+        <div class="diff-title">Without CI/CD</div>
+        <ul>
+          <li>Tests run only when you remember</li>
+          <li>Broken code reaches production</li>
+          <li>Manual server login every deployment</li>
+          <li>Passwords typed in terminal — no security</li>
+          <li>No record of who deployed what</li>
+        </ul>
+      </div>
+      <div class="diff-col">
+        <div class="diff-title">With GitHub Actions</div>
+        <ul>
+          <li>Tests run automatically on every push</li>
+          <li>Failing tests block the pipeline</li>
+          <li>Deploy happens automatically after tests pass</li>
+          <li>Secrets injected securely — never in logs</li>
+          <li>Full audit: who pushed, which commit, what result</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <hr />
+
+  <!-- ── 3. Core Concepts ────────────────────────────────────────────── -->
+  <h2>🧩 GitHub Actions — Key Concepts</h2>
+  <p>Every keyword explained in plain English, with a simple example.</p>
+
+  <div class="card">
+    <table class="concept-table">
+      <thead>
+        <tr>
+          <th>Keyword</th>
+          <th>What it means (simple)</th>
+          <th>Example from this project</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Workflow</td>
+          <td>
+            The main automation file. Think of it as a <strong>recipe</strong> — it says what should happen and when.
+            <em>One repo can have many workflows.</em>
+          </td>
+          <td><span class="ex">01-ci-pipeline.yml</span></td>
+        </tr>
+        <tr>
+          <td>on:</td>
+          <td>
+            <strong>Decides when the workflow starts.</strong> You can set it to fire on a push, on a pull request, on a schedule, or manually.
+            <em>Without this, nothing runs.</em>
+          </td>
+          <td><span class="ex">on: push</span> <span class="ex">pull_request</span></td>
+        </tr>
+        <tr>
+          <td>jobs:</td>
+          <td>
+            A workflow has one or more <strong>jobs</strong> — each job is a separate unit of work that runs on its own machine.
+            <em>Jobs can run at the same time or one after another.</em>
+          </td>
+          <td><span class="ex">lint</span> <span class="ex">test</span> <span class="ex">summary</span></td>
+        </tr>
+        <tr>
+          <td>runs-on:</td>
+          <td>
+            <strong>Which type of computer (runner) should run this job.</strong> GitHub provides free virtual machines — Ubuntu, Windows, or macOS.
+            <em>Most projects use ubuntu-latest.</em>
+          </td>
+          <td><span class="ex">ubuntu-latest</span></td>
+        </tr>
+        <tr>
+          <td>steps:</td>
+          <td>
+            A job is made of <strong>steps</strong> — individual tasks that run one by one in order. Each step is either a shell command or a pre-built Action.
+            <em>If one step fails, the next steps are skipped.</em>
+          </td>
+          <td>Checkout → Install → Lint → Test</td>
+        </tr>
+        <tr>
+          <td>uses:</td>
+          <td>
+            <strong>Use a pre-built Action</strong> instead of writing the code yourself. GitHub Marketplace has thousands of ready Actions.
+            <em>Like installing an npm package — but for your pipeline.</em>
+          </td>
+          <td><span class="ex">actions/checkout@v4</span></td>
+        </tr>
+        <tr>
+          <td>needs:</td>
+          <td>
+            <strong>Makes one job wait for another to finish first.</strong> The current job only starts if the listed job passed.
+            <em>Test job needs: lint — so tests won't run if linting fails.</em>
+          </td>
+          <td><span class="ex">needs: lint</span></td>
+        </tr>
+        <tr>
+          <td>strategy.matrix:</td>
+          <td>
+            <strong>Run the same job multiple times with different values — at the same time.</strong> Great for testing across multiple Node.js versions in parallel.
+            <em>One config → three simultaneous jobs.</em>
+          </td>
+          <td><span class="ex">node: [18, 20, 22]</span></td>
+        </tr>
+        <tr>
+          <td>concurrency:</td>
+          <td>
+            <strong>Controls what happens when two runs start at the same time.</strong> With <code>cancel-in-progress: true</code>, the older run is cancelled automatically.
+            <em>Saves runner minutes. No two runs overlap.</em>
+          </td>
+          <td><span class="ex">cancel-in-progress: true</span></td>
+        </tr>
+        <tr>
+          <td>environment:</td>
+          <td>
+            <strong>Links a job to a named GitHub Environment</strong> (like "production"). Environments can have their own secrets and optional approval gates.
+            <em>Approval gate = someone must click "approve" before the job runs.</em>
+          </td>
+          <td><span class="ex">environment: production</span></td>
+        </tr>
+        <tr>
+          <td>secrets.*</td>
+          <td>
+            <strong>Safe way to use passwords, API keys, and tokens.</strong> You store them in GitHub Settings — they are never visible in code or logs.
+            <em>Even if you accidentally write echo $SECRET, GitHub shows *** in logs.</em>
+          </td>
+          <td><span class="ex">secrets.DEPLOY_TOKEN</span></td>
+        </tr>
+        <tr>
+          <td>$GITHUB_STEP_SUMMARY</td>
+          <td>
+            <strong>Write a Markdown report to the Actions dashboard.</strong> Every team member can see a clean summary — no need to dig through raw logs.
+            <em>Shows: which tests passed, which commit, who triggered it.</em>
+          </td>
+          <td><span class="ex green">CI Pipeline Report ✅</span></td>
+        </tr>
+        <tr>
+          <td>if: always()</td>
+          <td>
+            <strong>Run this step/job even if the previous one failed.</strong> Used on the Summary job so you always get a report — even on failure.
+            <em>Without this, a failed test would hide the summary.</em>
+          </td>
+          <td><span class="ex">if: always()</span></td>
+        </tr>
+        <tr>
+          <td>fail-fast: false</td>
+          <td>
+            <strong>When using matrix, don't stop other jobs if one fails.</strong> Default behavior cancels all matrix jobs when one fails — this setting prevents that.
+            <em>You want to see ALL results, not just the first failure.</em>
+          </td>
+          <td><span class="ex">fail-fast: false</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr />
+
+  <!-- ── 4. Pipeline Flow ─────────────────────────────────────────────── -->
+  <h2>🏗️ How the CI Pipeline Works</h2>
+  <p>When you <code>git push</code> to main, this is exactly what happens — step by step:</p>
+
+  <div class="diagram">
+    <div class="mermaid">
+flowchart TD
+    A(["👨‍💻 git push origin main"]) --> B["🐙 GitHub detects push"]
+    B --> C
+
+    subgraph CI ["⚙️ CI Pipeline — 01-ci-pipeline.yml"]
+      direction TB
+      C["🔍 Job: lint\nnode --check all JS files"] --> D
+
+      D["🧪 Job: test\n(only if lint passed)"]
+      D --> E1["Node 18.x\nnpm test"]
+      D --> E2["Node 20.x\nnpm test"]
+      D --> E3["Node 22.x\nnpm test"]
+
+      E2 --> F["📁 Upload coverage\nartifact — 14 days"]
+      E1 & E2 & E3 --> G
+    end
+
+    G["📊 Job: summary\nif: always()"] --> H["Write Markdown report\nto Actions dashboard"]
+
+    style A fill:#111827,stroke:#63b3ed,color:#e2e8f0
+    style CI fill:#0f172a,stroke:#63b3ed,color:#e2e8f0
+    style G fill:#1e1b4b,stroke:#b794f4,color:#e2e8f0
+    </div>
+  </div>
+
+  <!-- ── 5. PR Check Flow ─────────────────────────────────────────────── -->
+  <h2>🔀 How the PR Check Works</h2>
+  <p>When someone opens a Pull Request, a <strong>fast, lightweight check</strong> runs automatically — before any reviewer even opens the diff.</p>
+
+  <div class="diagram">
+    <div class="mermaid">
+flowchart LR
+    A(["📬 PR opened or updated"]) --> B{"Same PR already\nrunning?"}
+    B -->|yes| C["Cancel old run\n(concurrency)"]
+    B -->|no| D
+    C --> D
+
+    subgraph PR ["⚡ PR Check — 03-pr-check.yml"]
+      D["Checkout + Node 20\nnpm ci"] --> E["npm run lint"]
+      E --> F["npm run format:check\nPrettier"]
+      F --> G["npm test"]
+    end
+
+    G --> H["Write PR summary\nif: always()"]
+
+    style A fill:#2d1b69,stroke:#b794f4,color:#e2e8f0
+    style PR fill:#0f172a,stroke:#b794f4,color:#e2e8f0
+    </div>
+  </div>
+
+  <hr />
+
+  <!-- ── 6. CI Workflow Code Breakdown ───────────────────────────────── -->
+  <h2>⚙️ CI Workflow — Code Breakdown</h2>
+
+  <div class="card">
+    <h3>Triggers — <code>on:</code></h3>
+    <p>Three ways this pipeline starts:</p>
+    <pre><span class="hl-key">on</span>:
+  <span class="hl-key">push</span>:
+    <span class="hl-key">branches</span>: [main]         <span class="hl-cmt"># fires when you push to main</span>
+  <span class="hl-key">pull_request</span>:
+    <span class="hl-key">branches</span>: [main]         <span class="hl-cmt"># fires when a PR targets main</span>
+  <span class="hl-key">workflow_dispatch</span>:          <span class="hl-cmt"># "Run workflow" button in GitHub UI</span>
+
+<span class="hl-cmt"># If two pushes happen quickly, cancel the older run automatically</span>
+<span class="hl-key">concurrency</span>:
+  <span class="hl-key">group</span>: ci-${{ github.ref }}
+  <span class="hl-key">cancel-in-progress</span>: <span class="hl-key">true</span></pre>
+  </div>
+
+  <div class="card">
+    <h3>Job 1 — <code>lint</code> (syntax check)</h3>
+    <p>Runs first. Checks if all JS files have valid syntax using Node's built-in checker — no extra tools needed.</p>
+    <pre><span class="hl-key">lint</span>:
+  <span class="hl-key">runs-on</span>: ubuntu-latest
+  <span class="hl-key">steps</span>:
+    - <span class="hl-key">uses</span>: actions/checkout@v4           <span class="hl-cmt"># download your code to the runner</span>
+    - <span class="hl-key">uses</span>: actions/setup-node@v4
+      <span class="hl-key">with</span>:
+        <span class="hl-key">node-version</span>: <span class="hl-str">'20.x'</span>
+        <span class="hl-key">cache</span>: <span class="hl-str">'npm'</span>                    <span class="hl-cmt"># reuse node_modules from cache = faster</span>
+    - <span class="hl-key">run</span>: npm ci                       <span class="hl-cmt"># clean install from package-lock.json</span>
+    - <span class="hl-key">run</span>: npm run lint                 <span class="hl-cmt"># node --check app.js server.js</span>
+    - <span class="hl-key">run</span>: npm run format:check         <span class="hl-cmt"># Prettier — is code style consistent?</span></pre>
+  </div>
+
+  <div class="card">
+    <h3>Job 2 — <code>test</code> with Matrix (runs after lint)</h3>
+    <p>Runs the same tests on Node 18, 20, and 22 — all at the same time. <code>fail-fast: false</code> means you see all results even if one fails.</p>
+    <pre><span class="hl-key">test</span>:
+  <span class="hl-key">needs</span>: lint                      <span class="hl-cmt"># only starts after lint passes ✅</span>
+  <span class="hl-key">strategy</span>:
+    <span class="hl-key">fail-fast</span>: <span class="hl-key">false</span>               <span class="hl-cmt"># don't cancel Node 22 if Node 18 fails</span>
+    <span class="hl-key">matrix</span>:
+      <span class="hl-key">node</span>: [<span class="hl-str">'18.x'</span>, <span class="hl-str">'20.x'</span>, <span class="hl-str">'22.x'</span>]  <span class="hl-cmt"># 3 jobs run in parallel</span>
+
+  <span class="hl-key">steps</span>:
+    - <span class="hl-key">uses</span>: actions/checkout@v4
+    - <span class="hl-key">uses</span>: actions/setup-node@v4
+      <span class="hl-key">with</span>:
+        <span class="hl-key">node-version</span>: ${{ matrix.node }}  <span class="hl-cmt"># each job uses a different version</span>
+    - <span class="hl-key">run</span>: npm ci
+    - <span class="hl-key">run</span>: npm test
+
+    <span class="hl-cmt"># Upload coverage only once — from the Node 20 job</span>
+    - <span class="hl-key">if</span>: matrix.node == <span class="hl-str">'20.x'</span>
+      <span class="hl-key">uses</span>: actions/upload-artifact@v4
+      <span class="hl-key">with</span>:
+        <span class="hl-key">name</span>: coverage-report
+        <span class="hl-key">path</span>: coverage/
+        <span class="hl-key">retention-days</span>: <span class="hl-num">14</span></pre>
+  </div>
+
+  <div class="card">
+    <h3>Job 3 — <code>summary</code> (always runs)</h3>
+    <p><code>if: always()</code> means this job runs <strong>even if tests fail</strong> — so you always see a report in the Actions dashboard.</p>
+    <pre><span class="hl-key">summary</span>:
+  <span class="hl-key">needs</span>: test
+  <span class="hl-key">if</span>: always()                     <span class="hl-cmt"># run even when test fails</span>
+  <span class="hl-key">steps</span>:
+    - <span class="hl-key">run</span>: |
+        echo <span class="hl-str">"## CI Pipeline Report"</span>  >> $GITHUB_STEP_SUMMARY
+        echo <span class="hl-str">"| Check | Status |"</span>      >> $GITHUB_STEP_SUMMARY
+        echo <span class="hl-str">"| Lint  | ✅ Passed |"</span>   >> $GITHUB_STEP_SUMMARY
+        echo <span class="hl-str">"| Tests | ✅ Passed |"</span>   >> $GITHUB_STEP_SUMMARY</pre>
+  </div>
+
+  <hr />
+
+  <!-- ── 7. npm ci vs npm install ────────────────────────────────────── -->
+  <h2>🆚 <code>npm ci</code> vs <code>npm install</code></h2>
+  <div class="card">
+    <p>Always use <code>npm ci</code> in pipelines. Here's why:</p>
+    <table class="kv-table">
+      <thead><tr><th>Property</th><th>npm install</th><th>npm ci</th></tr></thead>
+      <tbody>
+        <tr><td>Lock file</td><td>May update package-lock.json</td><td>Reads it, never changes it</td></tr>
+        <tr><td>Speed</td><td>Slower (resolves semver ranges)</td><td>Faster (uses exact versions)</td></tr>
+        <tr><td>node_modules</td><td>Updates existing folder</td><td>Deletes and reinstalls clean</td></tr>
+        <tr><td>Use when</td><td>Local development</td><td>CI/CD pipelines ← always</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr />
+
+  <!-- ── 8. Test Suite ────────────────────────────────────────────────── -->
+  <h2>🧪 Test Suite — <code>tests/app.test.js</code></h2>
+  <div class="card">
+    <p><strong>12 test cases</strong> — happy paths, edge cases, and error handling. The CI pipeline runs all of them on Node 18, 20, and 22 in parallel. If even one fails, the pipeline stops.</p>
+    <pre><span class="hl-cmt">// Happy path — expected correct results</span>
+expect(body.status).toBe(<span class="hl-str">'UP'</span>);         <span class="hl-cmt">// health endpoint works</span>
+expect(body.finalPrice).toBe(<span class="hl-num">80</span>);        <span class="hl-cmt">// 20% off 100 = 80</span>
+expect(body.finalPrice).toBe(<span class="hl-num">89.99</span>);     <span class="hl-cmt">// floating-point handled correctly</span>
+expect(body.finalPrice).toBe(<span class="hl-num">0</span>);         <span class="hl-cmt">// 100% discount = free</span>
+
+<span class="hl-cmt">// Error cases — should return 400 Bad Request</span>
+expect(status).toBe(<span class="hl-num">400</span>);               <span class="hl-cmt">// string passed instead of number</span>
+expect(status).toBe(<span class="hl-num">400</span>);               <span class="hl-cmt">// negative amount</span>
+expect(status).toBe(<span class="hl-num">400</span>);               <span class="hl-cmt">// discount percent above 100</span>
+
+<span class="hl-cmt">// 404 — route that does not exist</span>
+expect(status).toBe(<span class="hl-num">404</span>);</pre>
+  </div>
+
+  <hr />
+
+  <!-- ── 9. How to reuse in your project ─────────────────────────────── -->
+  <h2>🔧 Use This Setup in Your Own Project</h2>
+  <div class="card">
+    <div class="step-list">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body"><strong>Create the workflow folder</strong><br/>
+          Run <code>mkdir -p .github/workflows</code> in your project root. This is where all workflow files live.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body"><strong>Add a <code>test</code> script to <code>package.json</code></strong><br/>
+          GitHub Actions calls <code>npm test</code> — make sure it exits with a non-zero code when tests fail.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body"><strong>Copy <code>01-ci-pipeline.yml</code></strong><br/>
+          Change the Node version matrix if your project has different requirements. Everything else works as-is.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body"><strong>Copy <code>03-pr-check.yml</code></strong><br/>
+          This gives you automatic feedback on every Pull Request — no configuration needed.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body"><strong>Push and open the Actions tab on GitHub</strong><br/>
+          Watch every job run in real time. Click on the Summary panel to see the Markdown report.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Footer ───────────────────────────────────────────────────────── -->
+  <footer>
+    GitHub Actions · Node.js · Express · Jest · Supertest · Prettier
+  </footer>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background:         '#060c18',
+      primaryColor:       '#1e1b4b',
+      primaryTextColor:   '#e2e8f0',
+      primaryBorderColor: '#63b3ed',
+      lineColor:          '#63b3ed',
+      fontFamily:         'Inter',
+      fontSize:           '13px',
+    },
+    flowchart: { useMaxWidth: true, curve: 'basis' },
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# CD PIPELINE — GitHub Actions Tutorial
+# Trigger: push → main  |  Manual via workflow_dispatch (with env selector)
+#
+# Jobs:
+#   1. deploy → Build + verify + simulate deployment to production
+#
+# Secrets used (set in: GitHub Repo → Settings → Secrets → Actions):
+#   PRODUCTION_SERVER_IP  — IP address of the target server
+#   DEPLOY_TOKEN          — Auth token for the deployment process
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options: [production, staging]
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false # Never cancel in-flight deploys
+
+jobs:
+  deploy:
+    name: Deploy → ${{ github.event.inputs.environment || 'production' }}
+    runs-on: ubuntu-latest
+    environment: production # Links to GitHub Environment (approval gates, env secrets)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install production dependencies
+        run: npm ci --omit=dev # Skips devDependencies (jest, supertest) in prod
+
+      - name: Verify syntax (pre-deploy gate)
+        run: npm run lint
+
+      # Secrets are injected at runtime — never stored in code or logs
+      - name: Validate deployment secrets
+        env:
+          SERVER_IP: ${{ secrets.PRODUCTION_SERVER_IP }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$SERVER_IP" ]; then
+            echo "⚠️  PRODUCTION_SERVER_IP secret is not configured"
+          else
+            echo "✅ Target server: $SERVER_IP"
+          fi
+          if [ -z "$DEPLOY_TOKEN" ]; then
+            echo "⚠️  DEPLOY_TOKEN secret is not configured"
+          else
+            echo "✅ Deploy token: configured"
+          fi
+
+      - name: Build and package application
+        run: |
+          node --check app.js server.js
+          echo "✅ Syntax verified — build artefact ready"
+
+      - name: Deploy to server
+        env:
+          SERVER_IP: ${{ secrets.PRODUCTION_SERVER_IP }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          echo "Deploying to $SERVER_IP …"
+          # Real project: rsync / SSH / docker push / kubectl apply goes here
+          echo "✅ Deployment complete"
+
+      - name: Health-check verification
+        run: |
+          # Real project: curl -f http://$SERVER_IP/api/health
+          echo "GET /api/health → 200 OK ✅"
+
+      - name: Write deployment summary
+        run: |
+          ENV="${{ github.event.inputs.environment || 'production' }}"
+          echo "## Deployment Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`$ENV\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Health check | \`/api/health\` → 200 OK |" >> $GITHUB_STEP_SUMMARY

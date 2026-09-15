@@ -1,0 +1,57 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# PR CHECK — GitHub Actions Tutorial
+# Trigger: any Pull Request opened / updated / re-opened against main
+#
+# Purpose: Fast feedback loop — catches problems before a reviewer even opens
+#          the diff.  Keeps the main CI matrix from running on every draft commit.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true # Always cancel stale runs for the same PR
+
+jobs:
+  quick-check:
+    name: Quick Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: npm run lint
+
+      - name: Check code formatting (Prettier)
+        run: npm run format:check
+
+      - name: Run tests
+        run: npm test
+        env:
+          NODE_ENV: test
+
+      - name: Write PR summary
+        if: always()
+        run: |
+          echo "## PR Validation" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| PR | #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Author | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.head_ref }}\` → \`${{ github.base_ref }}\` |" >> $GITHUB_STEP_SUMMARY

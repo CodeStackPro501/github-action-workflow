@@ -1,0 +1,51 @@
+{
+  "name": "github-actions-cicd-tutorial",
+  "version": "1.0.0",
+  "description": "Production-ready Node.js REST API demonstrating GitHub Actions CI/CD pipelines",
+  "main": "server.js",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --forceExit",
+    "lint": "node --check app.js server.js tests/app.test.js",
+    "format": "prettier --write \"**/*.{js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{js,json,md,yml,yaml}\""
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "app.js"
+    ],
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "clover"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
+  },
+  "keywords": [
+    "github-actions",
+    "ci-cd",
+    "pipeline",
+    "node",
+    "express",
+    "jest"
+  ],
+  "author": "Tech Creator",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "prettier": "^3.9.6",
+    "supertest": "^7.0.0"
+  }
+}
